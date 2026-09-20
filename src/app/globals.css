@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #050705;
+  --foreground: #00FF66;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  color: #00FF66;
+  background-color: #050705;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Subtle CRT Monitor Scanlines Overlay */
+.crt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  background: 
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  background-size: 100% 3px, 6px 100%;
+  opacity: 0.85;
+}
+
+/* CRT Screen Vignette (Edge curvature illusion) */
+.crt-vignette {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9998;
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8), inset 0 0 40px rgba(0, 20, 5, 0.9);
+}
+
+/* Phosphor Glow Utilities */
+.glow-green {
+  text-shadow: 0 0 4px #00FF66, 0 0 10px rgba(0, 255, 102, 0.5), 0 0 20px rgba(0, 255, 102, 0.25);
+}
+
+.glow-green-sm {
+  text-shadow: 0 0 3px #00FF66, 0 0 6px rgba(0, 255, 102, 0.4);
+}
+
+.glow-amber {
+  text-shadow: 0 0 4px #FFCC00, 0 0 10px rgba(255, 204, 0, 0.5);
+}
+
+.glow-red {
+  text-shadow: 0 0 4px #FF3333, 0 0 10px rgba(255, 51, 51, 0.5);
+}
+
+.box-glow-green {
+  box-shadow: 0 0 15px rgba(0, 255, 102, 0.2), inset 0 0 15px rgba(0, 255, 102, 0.05);
+}
+
+/* Terminal Interactive Buttons */
+.term-btn {
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid #00FF66;
+  background: rgba(0, 255, 102, 0.05);
+  color: #00FF66;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+  user-select: none;
+}
+
+.term-btn:hover {
+  background: #00FF66;
+  color: #000000;
+  box-shadow: 0 0 15px #00FF66;
+}
+
+.term-btn:active {
+  transform: scale(0.98);
+}
+
+.term-btn-amber {
+  border-color: #FFCC00;
+  color: #FFCC00;
+  background: rgba(255, 204, 0, 0.05);
+}
+
+.term-btn-amber:hover {
+  background: #FFCC00;
+  color: #000000;
+  box-shadow: 0 0 15px #FFCC00;
+}
+
+.term-btn-red {
+  border-color: #FF3333;
+  color: #FF3333;
+  background: rgba(255, 51, 51, 0.05);
+}
+
+.term-btn-red:hover {
+  background: #FF3333;
+  color: #000000;
+  box-shadow: 0 0 15px #FF3333;
+}
+
+/* Terminal Input */
+.term-input {
+  background: #000000;
+  border: 1px solid #008833;
+  color: #00FF66;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.term-input:focus {
+  outline: none;
+  border-color: #00FF66;
+  box-shadow: 0 0 10px rgba(0, 255, 102, 0.3);
+}
+
+/* Blinking Cursor */
+.term-cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.15em;
+  vertical-align: text-bottom;
+  background-color: #00FF66;
+  box-shadow: 0 0 8px #00FF66;
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Monospace Terminal Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050a05;
+  border-left: 1px solid #003311;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #005522;
+  border: 1px solid #00FF66;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #008833;
+}
+
+/* ASCII and Terminal Frame Borders */
+.term-window {
+  background-color: #070a07;
+  border: 2px solid #00FF66;
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.15), inset 0 0 20px rgba(0, 255, 102, 0.03);
+}
