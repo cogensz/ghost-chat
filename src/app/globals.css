@@ -16,8 +16,13 @@ body {
   background-color: #050705;
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   overflow-x: hidden;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
+
+/* Hide scrollbar on button rows without losing scroll ability */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 
 /* Subtle CRT Monitor Scanlines Overlay */
 .crt-overlay {

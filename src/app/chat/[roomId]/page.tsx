@@ -39,13 +39,11 @@ export default function TerminalChatRoomPage({
   const roomId = resolvedParams.roomId;
   const router = useRouter();
 
-  // Operator State
   const [nickname, setNickname] = useState('');
   const [selectedAccent, setSelectedAccent] = useState(TERMINAL_ACCENTS[0]);
   const [hasJoined, setHasJoined] = useState(false);
   const [modalInput, setModalInput] = useState('');
 
-  // Terminal Channel State
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [activeUsers, setActiveUsers] = useState<RoomUser[]>([]);
@@ -55,82 +53,46 @@ export default function TerminalChatRoomPage({
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [systemClock, setSystemClock] = useState('');
 
-  // References
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef(getSocket());
 
-  // Clock
   useEffect(() => {
-    const update = () => {
-      setSystemClock(new Date().toTimeString().split(' ')[0]);
-    };
+    const update = () => setSystemClock(new Date().toTimeString().split(' ')[0]);
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-scroll
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingUsers]);
 
-  // Connect socket and setup listeners
   useEffect(() => {
     if (!hasJoined) return;
 
     const socket = socketRef.current;
-    if (!socket.connected) {
-      socket.connect();
-    }
+    if (!socket.connected) socket.connect();
 
-    socket.emit('join-room', {
-      roomId,
-      nickname,
-      color: selectedAccent.hex,
-    });
+    socket.emit('join-room', { roomId, nickname, color: selectedAccent.hex });
 
     const handleNewMessage = (msg: Message) => {
       setMessages((prev) => [...prev, msg]);
-      if (soundEnabled && msg.senderId !== socket.id) {
-        playMessageSound();
-      }
+      if (soundEnabled && msg.senderId !== socket.id) playMessageSound();
     };
-
     const handleUserJoined = (sysMsg: Message) => {
       setMessages((prev) => [...prev, sysMsg]);
-      if (soundEnabled) {
-        playJoinSound();
-      }
+      if (soundEnabled) playJoinSound();
     };
-
-    const handleUserLeft = (sysMsg: Message) => {
-      setMessages((prev) => [...prev, sysMsg]);
-    };
-
-    const handleRoomUsers = (users: RoomUser[]) => {
-      setActiveUsers(users);
-    };
-
-    const handleUserTyping = ({
-      nickname: typingNick,
-      isTyping,
-    }: {
-      nickname: string;
-      isTyping: boolean;
-    }) => {
-      setTypingUsers((prev) => {
-        if (isTyping) {
-          if (!prev.includes(typingNick)) return [...prev, typingNick];
-          return prev;
-        } else {
-          return prev.filter((u) => u !== typingNick);
-        }
-      });
+    const handleUserLeft = (sysMsg: Message) => setMessages((prev) => [...prev, sysMsg]);
+    const handleRoomUsers = (users: RoomUser[]) => setActiveUsers(users);
+    const handleUserTyping = ({ nickname: typingNick, isTyping }: { nickname: string; isTyping: boolean }) => {
+      setTypingUsers((prev) =>
+        isTyping
+          ? prev.includes(typingNick) ? prev : [...prev, typingNick]
+          : prev.filter((u) => u !== typingNick)
+      );
     };
 
     socket.on('new-message', handleNewMessage);
@@ -149,7 +111,6 @@ export default function TerminalChatRoomPage({
     };
   }, [hasJoined, roomId, nickname, selectedAccent, soundEnabled]);
 
-  // Handle Nickname Modal Submit
   const handleJoinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalInput.trim()) return;
@@ -158,87 +119,71 @@ export default function TerminalChatRoomPage({
     setHasJoined(true);
   };
 
-  // Handle Send Message
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputMessage.trim() || !hasJoined) return;
-
     playKeyClickSound();
-    const socket = socketRef.current;
-    socket.emit('send-message', {
-      text: inputMessage,
-      roomId,
-    });
-
-    socket.emit('typing', { isTyping: false });
+    socketRef.current.emit('send-message', { text: inputMessage, roomId });
+    socketRef.current.emit('typing', { isTyping: false });
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
     setInputMessage('');
+    // Re-focus input on mobile after send
+    setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  // Handle Typing indicator
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputMessage(e.target.value);
-    const socket = socketRef.current;
-
-    socket.emit('typing', { isTyping: true });
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
+    socketRef.current.emit('typing', { isTyping: true });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      socket.emit('typing', { isTyping: false });
+      socketRef.current.emit('typing', { isTyping: false });
     }, 1500);
   };
 
-  // Copy Invite Link
   const handleCopyLink = () => {
     playKeyClickSound();
-    const fullUrl = window.location.href;
-    navigator.clipboard.writeText(fullUrl);
+    navigator.clipboard.writeText(window.location.href);
     setCopiedNotification(true);
-    setTimeout(() => {
-      setCopiedNotification(false);
-    }, 3000);
+    setTimeout(() => setCopiedNotification(false), 3000);
   };
 
-  // Exit channel
   const handleLeaveRoom = () => {
     playKeyClickSound();
-    const socket = socketRef.current;
-    socket.emit('leave-room');
+    socketRef.current.emit('leave-room');
     router.push('/');
   };
 
-  const formatTimestamp = (ts: number) => {
-    const d = new Date(ts);
-    return d.toTimeString().split(' ')[0];
-  };
+  const formatTimestamp = (ts: number) =>
+    new Date(ts).toTimeString().split(' ')[0];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-2 sm:p-4 bg-black text-[#00FF66] font-mono select-text">
-      
-      {/* NICKNAME AUTH MODAL */}
+    /* 100dvh fixes mobile browser chrome (address bar) clipping */
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] p-1 sm:p-2 md:p-4 bg-black text-[#00FF66] font-mono overflow-x-hidden">
+
+      {/* ── NICKNAME AUTH MODAL ────────────────────────────── */}
       {!hasJoined && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
-          <div className="w-full max-w-lg term-window border-2 border-[#00FF66] bg-[#070b07] shadow-[0_0_30px_rgba(0,255,102,0.3)]">
-            
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-sm">
+          {/* w-[90%] on mobile, max-w-lg on larger */}
+          <div className="w-[90%] max-w-lg term-window border-2 border-[#00FF66] bg-[#070b07] shadow-[0_0_30px_rgba(0,255,102,0.3)]">
+
             {/* Modal Title Bar */}
-            <div className="flex items-center justify-between px-3 py-2 border-b-2 border-[#00FF66] bg-[#00220d] text-xs font-bold">
-              <span className="glow-green">[SYS_AUTH // IDENTITY_CHALLENGE]</span>
-              <span className="text-[#008833]">[PORT: 3000]</span>
+            <div className="flex items-center justify-between px-2 sm:px-3 py-1.5 sm:py-2 border-b-2 border-[#00FF66] bg-[#00220d] text-[10px] sm:text-xs font-bold gap-2">
+              <span className="glow-green truncate">[SYS_AUTH // IDENTITY_CHALLENGE]</span>
+              <span className="text-[#008833] shrink-0 hidden sm:inline">[PORT: 3000]</span>
             </div>
 
-            <div className="p-5 sm:p-7 space-y-5">
-              <div className="text-xs text-[#008833] space-y-1">
-                <div>&gt; CONNECTED TO NODE FREQUENCY: <span className="text-[#00FF66] font-bold">#{roomId}</span></div>
-                <div>&gt; STATUS: ENCRYPTION_ESTABLISHED // IN-RAM ACTIVE</div>
-                <div>&gt; PROMPT: ENTER OPERATOR IDENTITY TO COMMENCE TRANSMISSION</div>
+            <div className="p-3 sm:p-5 md:p-7 space-y-4 sm:space-y-5">
+              {/* Connection info — compact on mobile */}
+              <div className="text-[10px] sm:text-xs text-[#008833] space-y-1">
+                <div>&gt; FREQUENCY: <span className="text-[#00FF66] font-bold break-all">#{roomId}</span></div>
+                <div className="hidden sm:block">&gt; STATUS: ENCRYPTION_ESTABLISHED // IN-RAM ACTIVE</div>
+                <div>&gt; ENTER OPERATOR IDENTITY TO TRANSMIT</div>
               </div>
 
-              <form onSubmit={handleJoinSubmit} className="space-y-4">
-                <div className="border border-[#008833] bg-[#020502] p-3 focus-within:border-[#00FF66] focus-within:shadow-[0_0_12px_rgba(0,255,102,0.3)]">
-                  <label className="block text-[10px] text-[#008833] uppercase tracking-widest mb-1.5 font-bold">
+              <form onSubmit={handleJoinSubmit} className="space-y-3 sm:space-y-4">
+                {/* Alias Input */}
+                <div className="border border-[#008833] bg-[#020502] p-2.5 sm:p-3 focus-within:border-[#00FF66] focus-within:shadow-[0_0_12px_rgba(0,255,102,0.3)]">
+                  <label className="block text-[9px] sm:text-[10px] text-[#008833] uppercase tracking-widest mb-1.5 font-bold">
                     OPERATOR_HANDLE // ENTER_ALIAS:
                   </label>
                   <div className="flex items-center">
@@ -251,24 +196,25 @@ export default function TerminalChatRoomPage({
                       placeholder="GHOST_OPERATOR"
                       value={modalInput}
                       onChange={(e) => setModalInput(e.target.value)}
-                      className="flex-1 bg-transparent text-[#00FF66] text-base font-mono uppercase font-bold placeholder-[#004419] focus:outline-none"
+                      /* text-base prevents iOS auto-zoom on focus */
+                      className="flex-1 bg-transparent text-[#00FF66] text-base font-mono uppercase font-bold placeholder-[#004419] focus:outline-none min-w-0"
                     />
                     <span className="term-cursor" />
                   </div>
                 </div>
 
-                {/* Accent Frequency Select */}
+                {/* Frequency Color — scrollable row on mobile */}
                 <div>
-                  <label className="block text-[10px] text-[#008833] uppercase tracking-widest mb-1.5 font-bold">
+                  <label className="block text-[9px] sm:text-[10px] text-[#008833] uppercase tracking-widest mb-1.5 font-bold">
                     SIGNAL_FREQUENCY_COLOR:
                   </label>
-                  <div className="grid grid-cols-5 gap-2">
+                  <div className="flex gap-1.5 sm:grid sm:grid-cols-5 sm:gap-2 overflow-x-auto pb-1 sm:pb-0">
                     {TERMINAL_ACCENTS.map((accent) => (
                       <button
                         key={accent.name}
                         type="button"
                         onClick={() => setSelectedAccent(accent)}
-                        className={`py-1.5 px-2 text-[10px] font-bold border transition-all ${
+                        className={`py-1.5 px-2 text-[9px] sm:text-[10px] font-bold border transition-all shrink-0 ${
                           selectedAccent.name === accent.name
                             ? 'border-white bg-[#003311] shadow-[0_0_8px_rgba(0,255,102,0.5)]'
                             : 'border-[#004419] bg-[#020502] opacity-60 hover:opacity-100'
@@ -284,107 +230,98 @@ export default function TerminalChatRoomPage({
                 <button
                   type="submit"
                   disabled={!modalInput.trim()}
-                  className="w-full py-3 term-btn border-2 border-[#00FF66] bg-[#00220d] text-sm font-bold tracking-widest disabled:opacity-40"
+                  className="w-full py-3 term-btn border-2 border-[#00FF66] bg-[#00220d] text-xs sm:text-sm font-bold tracking-wider sm:tracking-widest disabled:opacity-40"
                 >
                   [ &gt; INITIALIZE_SESSION ]
                 </button>
               </form>
 
-              <div className="text-[10px] text-[#005522] text-center border-t border-[#00220d] pt-3">
-                * Zero retention guarantee: This handle exists solely in active browser memory.
+              <div className="text-[9px] sm:text-[10px] text-[#005522] text-center border-t border-[#00220d] pt-2 sm:pt-3">
+                * Zero retention: Handle exists only in active browser memory.
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MAIN TERMINAL CHAT WINDOW */}
-      <div className="w-full max-w-5xl h-[94vh] term-window border-2 border-[#00FF66] bg-[#060906] flex flex-col relative shadow-[0_0_30px_rgba(0,255,102,0.15)]">
-        
-        {/* RETRO STATUS BAR HEADER */}
-        <header className="border-b-2 border-[#00FF66] bg-[#001809] px-3 py-2 select-none">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
-            
-            {/* Left metadata tags */}
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-[#00FF66] glow-green flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-[#00FF66] inline-block animate-pulse" />
-                TTY: #{roomId}
+      {/* ── MAIN TERMINAL CHAT WINDOW ─────────────────────── */}
+      {/* h-[92dvh] shrinks correctly when mobile browser chrome appears */}
+      <div className="w-full max-w-5xl h-[92dvh] sm:h-[90dvh] md:h-[92dvh] term-window border-2 border-[#00FF66] bg-[#060906] flex flex-col relative shadow-[0_0_30px_rgba(0,255,102,0.15)]">
+
+        {/* ── RETRO STATUS HEADER ─── */}
+        <header className="border-b-2 border-[#00FF66] bg-[#001809] px-2 sm:px-3 py-1.5 sm:py-2 select-none shrink-0">
+          {/* Two rows on mobile, one row on sm+ */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-bold">
+
+            {/* Metadata row */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap min-w-0">
+              <span className="text-[#00FF66] glow-green flex items-center gap-1.5 shrink-0">
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-[#00FF66] inline-block animate-pulse shrink-0" />
+                {/* Truncate long room ID on mobile */}
+                <span className="max-w-[80px] sm:max-w-none truncate">#{roomId}</span>
               </span>
-              <span className="text-[#008833] hidden md:inline">|</span>
-              <span className="text-[#00FF66]/90">
-                RAM_STATE: <span className="text-[#FFCC00]">[VOLATILE]</span>
+              <span className="text-[#00FF66]/90 shrink-0">
+                RAM:<span className="text-[#FFCC00]">[VOL]</span>
               </span>
-              <span className="text-[#008833] hidden md:inline">|</span>
-              <span className="text-[#00FF66]/90">
-                OPERATORS_ONLINE: <span className="text-[#00FF66] font-bold">[{activeUsers.length.toString().padStart(2, '0')}]</span>
+              <span className="text-[#00FF66]/90 shrink-0">
+                PEERS:<span className="text-[#00FF66] font-bold">[{activeUsers.length.toString().padStart(2, '0')}]</span>
               </span>
-              <span className="text-[#008833] hidden lg:inline">|</span>
-              <span className="text-[#008833] text-[11px] hidden lg:inline">
+              <span className="text-[#008833] text-[10px] hidden md:inline">
                 ID: &lt;{nickname || 'GUEST'}&gt;
               </span>
             </div>
 
-            {/* Right Action Keycaps */}
-            <div className="flex items-center gap-2">
+            {/* Action buttons row — scrollable on mobile to avoid wrap overflow */}
+            <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto pb-0.5 sm:pb-0 no-scrollbar shrink-0">
               <button
                 onClick={handleCopyLink}
-                className="term-btn px-2.5 py-1 text-[11px]"
-                title="Copy full invite link"
+                className="term-btn px-2 py-1 text-[9px] sm:text-[11px] whitespace-nowrap shrink-0"
+                title="Copy invite link"
               >
-                {copiedNotification ? '[ ✓ LINK_COPIED ]' : '[ COPY_INVITE_LINK ]'}
+                {copiedNotification ? '[ ✓ COPIED ]' : '[ COPY_LINK ]'}
               </button>
-
               <button
                 onClick={() => setShowUsersDrawer(!showUsersDrawer)}
-                className="term-btn px-2.5 py-1 text-[11px]"
-                title="List active operators"
+                className="term-btn px-2 py-1 text-[9px] sm:text-[11px] whitespace-nowrap shrink-0"
+                title="Show peers"
               >
-                [ PEERS:{activeUsers.length} ]
+                [ P:{activeUsers.length} ]
               </button>
-
               <button
                 onClick={() => setSoundEnabled(!soundEnabled)}
-                className="term-btn px-2.5 py-1 text-[11px]"
-                title="Toggle 8-bit audio blips"
+                className="term-btn px-2 py-1 text-[9px] sm:text-[11px] whitespace-nowrap shrink-0"
+                title="Toggle sound"
               >
-                {soundEnabled ? '[ BEEP: ON ]' : '[ BEEP: OFF ]'}
+                {soundEnabled ? '[ 🔔 ]' : '[ 🔕 ]'}
               </button>
-
               <button
                 onClick={handleLeaveRoom}
-                className="term-btn term-btn-red px-2.5 py-1 text-[11px]"
-                title="Abort connection and purge memory"
+                className="term-btn term-btn-red px-2 py-1 text-[9px] sm:text-[11px] whitespace-nowrap shrink-0"
+                title="Exit and purge"
               >
-                [ ABORT / EXIT ]
+                [ EXIT ]
               </button>
             </div>
           </div>
         </header>
 
-        {/* ACTIVE PEERS OVERLAY DRAWER */}
+        {/* ── PEERS DRAWER OVERLAY ─── */}
         {showUsersDrawer && (
-          <div className="absolute top-12 right-3 z-30 w-72 border-2 border-[#00FF66] bg-[#020502] p-3 shadow-[0_0_20px_rgba(0,255,102,0.25)]">
-            <div className="flex items-center justify-between text-xs font-bold border-b border-[#008833] pb-1.5 mb-2">
-              <span>ACTIVE_PEERS_IN_NODE ({activeUsers.length})</span>
-              <button
-                onClick={() => setShowUsersDrawer(false)}
-                className="text-[#FF3333] hover:text-white"
-              >
+          <div className="absolute top-auto bottom-20 sm:top-16 sm:bottom-auto right-2 sm:right-3 z-30 w-56 sm:w-72 border-2 border-[#00FF66] bg-[#020502] p-2.5 sm:p-3 shadow-[0_0_20px_rgba(0,255,102,0.25)]">
+            <div className="flex items-center justify-between text-[10px] sm:text-xs font-bold border-b border-[#008833] pb-1.5 mb-2">
+              <span>ACTIVE_PEERS ({activeUsers.length})</span>
+              <button onClick={() => setShowUsersDrawer(false)} className="text-[#FF3333] hover:text-white ml-2">
                 [X]
               </button>
             </div>
-            <div className="space-y-1.5 max-h-48 overflow-y-auto text-xs">
+            <div className="space-y-1 sm:space-y-1.5 max-h-40 sm:max-h-48 overflow-y-auto text-[10px] sm:text-xs">
               {activeUsers.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center justify-between px-2 py-1 bg-[#051105] border border-[#003311]"
-                >
+                <div key={u.id} className="flex items-center justify-between px-2 py-1 bg-[#051105] border border-[#003311]">
                   <span className="font-bold truncate" style={{ color: u.color || '#00FF66' }}>
                     &gt; {u.nickname}
                   </span>
                   {u.nickname === nickname && (
-                    <span className="text-[10px] text-[#FFCC00]">[YOU]</span>
+                    <span className="text-[9px] sm:text-[10px] text-[#FFCC00] ml-2 shrink-0">[YOU]</span>
                   )}
                 </div>
               ))}
@@ -392,25 +329,25 @@ export default function TerminalChatRoomPage({
           </div>
         )}
 
-        {/* COPY NOTIFICATION BANNER */}
+        {/* ── COPY NOTIFICATION BANNER ─── */}
         {copiedNotification && (
-          <div className="bg-[#003311] border-b border-[#00FF66] px-4 py-1 text-center text-xs font-bold text-[#00FF66] glow-green">
-            &gt;&gt; INVITE LINK COPIED TO SYSTEM CLIPBOARD. TRANSMIT FREQUENCY TO PEERS.
+          <div className="bg-[#003311] border-b border-[#00FF66] px-2 sm:px-4 py-1 text-center text-[10px] sm:text-xs font-bold text-[#00FF66] glow-green shrink-0">
+            &gt;&gt; INVITE LINK COPIED. TRANSMIT TO PEERS.
           </div>
         )}
 
-        {/* LOG-STYLE CHAT STREAM */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2 text-xs sm:text-sm font-mono bg-[#030603]">
-          
-          {/* Welcome log banner */}
-          <div className="border border-[#004419] bg-[#010401] p-3 text-xs text-[#008833] space-y-1 select-none">
-            <div>--------------------------------------------------------------------------------</div>
-            <div className="text-[#00FF66] font-bold glow-green-sm">
-              [SYSTEM] FREQUENCY #{roomId} INITIALIZED // ENCRYPTED TTY CONSOLE
+        {/* ── LOG-STYLE CHAT STREAM (flex-1 = fills remaining height) ── */}
+        <div className="flex-1 overflow-y-auto p-2 sm:p-3 md:p-5 space-y-1.5 sm:space-y-2 text-[11px] sm:text-xs md:text-sm font-mono bg-[#030603] min-h-0">
+
+          {/* Welcome banner */}
+          <div className="border border-[#004419] bg-[#010401] p-2 sm:p-3 text-[10px] sm:text-xs text-[#008833] space-y-1 select-none">
+            <div className="hidden sm:block">----------------------------------------</div>
+            <div className="text-[#00FF66] font-bold glow-green-sm break-all">
+              [SYSTEM] FREQUENCY #{roomId} INITIALIZED
             </div>
-            <div>[POLICY] ALL TRANSMISSIONS ARE VOLATILE IN RAM // ZERO DISK PERSISTENCE</div>
-            <div>[KEYCAPS] USE &apos;[ COPY_INVITE_LINK ]&apos; TO BRIDGE PEERS INTO THIS SECURE ENCLAVE</div>
-            <div>--------------------------------------------------------------------------------</div>
+            <div className="hidden sm:block">[POLICY] ALL TRANSMISSIONS VOLATILE IN RAM // ZERO DISK</div>
+            <div>[TIP] USE &apos;[ COPY_LINK ]&apos; TO INVITE PEERS</div>
+            <div className="hidden sm:block">----------------------------------------</div>
           </div>
 
           {/* Messages */}
@@ -419,10 +356,10 @@ export default function TerminalChatRoomPage({
 
             if (msg.system) {
               return (
-                <div key={msg.id} className="text-[#008833] py-0.5 flex items-start gap-2">
-                  <span className="text-[#005522]">[{timeStr}]</span>
-                  <span className="text-[#FFCC00] font-bold">[SYS_EVENT]</span>
-                  <span className="text-[#00FF66]/80">&gt;&gt; {msg.text}</span>
+                <div key={msg.id} className="text-[#008833] py-0.5 flex items-start gap-1.5 sm:gap-2">
+                  <span className="text-[#005522] shrink-0 font-mono">[{timeStr}]</span>
+                  <span className="text-[#FFCC00] font-bold shrink-0">[SYS]</span>
+                  <span className="text-[#00FF66]/80 break-words min-w-0">&gt;&gt; {msg.text}</span>
                 </div>
               );
             }
@@ -432,33 +369,31 @@ export default function TerminalChatRoomPage({
             return (
               <div
                 key={msg.id}
-                className={`flex items-start gap-2 py-1 px-2 border-l-2 ${
+                className={`flex items-start gap-1.5 sm:gap-2 py-1 px-1.5 sm:px-2 border-l-2 ${
                   isSelf
                     ? 'border-[#00FF66] bg-[#001f0b]/40 text-[#00FF66]'
                     : 'border-[#008833] bg-[#030803]/40 text-slate-200'
                 }`}
               >
-                {/* Timestamp */}
-                <span className="text-[#008833] select-none shrink-0 font-mono">
+                {/* Timestamp — visible on sm+, hidden on tiny mobile */}
+                <span className="text-[#008833] select-none shrink-0 font-mono hidden sm:inline">
                   [{timeStr}]
                 </span>
-
-                {/* Sender Tag */}
+                {/* Sender label */}
                 {isSelf ? (
-                  <span className="text-[#00FF66] font-extrabold glow-green shrink-0 select-none">
-                    [YOU] &gt;&gt;
+                  <span className="text-[#00FF66] font-extrabold glow-green shrink-0 select-none whitespace-nowrap">
+                    [YOU]&gt;&gt;
                   </span>
                 ) : (
                   <span
-                    className="font-bold shrink-0 select-none"
+                    className="font-bold shrink-0 select-none truncate max-w-[80px] sm:max-w-none"
                     style={{ color: msg.senderColor || '#00FF66' }}
                   >
-                    &lt;{msg.senderName}&gt; :
+                    &lt;{msg.senderName}&gt;:
                   </span>
                 )}
-
-                {/* Text Message */}
-                <span className="break-all whitespace-pre-wrap leading-relaxed flex-1">
+                {/* Message — break-words handles long unbroken strings */}
+                <span className="break-words whitespace-pre-wrap leading-relaxed flex-1 min-w-0">
                   {msg.text}
                 </span>
               </div>
@@ -468,51 +403,58 @@ export default function TerminalChatRoomPage({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* TYPING STATUS NOTICE */}
+        {/* ── TYPING INDICATOR ─── */}
         {typingUsers.length > 0 && (
-          <div className="px-4 py-1 bg-[#010401] border-t border-[#003311] text-xs text-[#FFCC00] flex items-center gap-2 select-none">
-            <span className="animate-pulse">⚡</span>
-            <span>
-              [SYS_NOTICE] OPERATOR {typingUsers.join(', ')} IS COMPOSING PAYLOAD...
+          <div className="px-2 sm:px-4 py-1 bg-[#010401] border-t border-[#003311] text-[10px] sm:text-xs text-[#FFCC00] flex items-center gap-1.5 sm:gap-2 select-none shrink-0">
+            <span className="animate-pulse shrink-0">⚡</span>
+            <span className="truncate">
+              {typingUsers.join(', ')} IS COMPOSING...
             </span>
           </div>
         )}
 
-        {/* COMMAND LINE TRANSMIT BAR */}
-        <div className="border-t-2 border-[#00FF66] bg-[#020502] p-2.5 sm:p-3 select-none">
-          <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-            
-            {/* Shell Prompt Prefix */}
-            <div className="flex items-center text-xs sm:text-sm font-bold text-[#00FF66] shrink-0">
-              <span className="text-[#008833] hidden sm:inline">[{systemClock}]</span>
-              <span className="text-[#FFCC00] ml-1 sm:ml-2">operator@ghost:~$</span>
+        {/* ── COMMAND LINE TRANSMIT BAR ─── */}
+        <div className="border-t-2 border-[#00FF66] bg-[#020502] p-2 sm:p-2.5 md:p-3 select-none shrink-0">
+          <form onSubmit={handleSendMessage} className="flex items-center gap-1.5 sm:gap-2">
+
+            {/* Shell prompt prefix — shortened on mobile */}
+            <div className="flex items-center text-[10px] sm:text-xs md:text-sm font-bold text-[#00FF66] shrink-0">
+              <span className="text-[#008833] hidden md:inline">[{systemClock}]</span>
+              <span className="text-[#FFCC00] ml-0 md:ml-1 whitespace-nowrap">
+                <span className="hidden sm:inline">operator@ghost:~$</span>
+                <span className="sm:hidden">ghost:~$</span>
+              </span>
             </div>
 
-            {/* Input field */}
-            <div className="flex-1 flex items-center border border-[#008833] bg-black px-3 py-2 focus-within:border-[#00FF66] focus-within:shadow-[0_0_10px_rgba(0,255,102,0.3)]">
+            {/* Input — text-base prevents iOS zoom, flex-1 fills available space */}
+            <div className="flex-1 flex items-center border border-[#008833] bg-black px-2 sm:px-3 py-1.5 sm:py-2 focus-within:border-[#00FF66] focus-within:shadow-[0_0_8px_rgba(0,255,102,0.3)] min-w-0">
               <input
+                ref={inputRef}
                 type="text"
-                placeholder="TYPE TRANSMISSION PAYLOAD..."
+                placeholder="TRANSMIT PAYLOAD..."
                 value={inputMessage}
                 onChange={handleInputChange}
-                className="flex-1 bg-transparent text-[#00FF66] text-xs sm:text-sm font-mono placeholder-[#004419] focus:outline-none"
+                /* text-base (16px) prevents iOS Safari auto-zoom on focus */
+                className="flex-1 bg-transparent text-[#00FF66] text-base font-mono placeholder-[#004419] focus:outline-none min-w-0"
               />
-              <span className="term-cursor ml-1" />
+              <span className="term-cursor ml-1 shrink-0 hidden sm:inline-block" />
             </div>
 
-            {/* Transmit Command Button */}
+            {/* Send button */}
             <button
               type="submit"
               disabled={!inputMessage.trim()}
-              className="term-btn px-4 sm:px-6 py-2 text-xs sm:text-sm font-bold disabled:opacity-40 disabled:pointer-events-none shrink-0"
+              className="term-btn px-3 sm:px-4 md:px-6 py-2 text-[10px] sm:text-xs md:text-sm font-bold disabled:opacity-40 disabled:pointer-events-none shrink-0 whitespace-nowrap"
             >
-              [ TRANSMIT ]
+              <span className="hidden sm:inline">[ TRANSMIT ]</span>
+              <span className="sm:hidden">[ TX ]</span>
             </button>
           </form>
 
-          <div className="flex justify-between items-center text-[10px] text-[#005522] mt-1.5 px-1 font-mono">
-            <span>READY TO SEND // KEYSTROKE: [ENTER]</span>
-            <span className="text-[#008833]">END-TO-END IN-MEMORY VOLATILE DATA STREAM</span>
+          {/* Footer status — hidden on mobile to save space */}
+          <div className="hidden sm:flex justify-between items-center text-[9px] sm:text-[10px] text-[#005522] mt-1 sm:mt-1.5 px-1 font-mono">
+            <span>READY // KEYSTROKE: [ENTER]</span>
+            <span className="text-[#008833]">IN-MEMORY VOLATILE STREAM</span>
           </div>
         </div>
 
